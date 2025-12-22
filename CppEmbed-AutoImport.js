@@ -1,95 +1,136 @@
-//  QuickAdd Script: CppEmbed-Flow
+///  QuickAdd Script: CppEmbed-Flow
 // Ablauf:
-// 1) "# Erarbeitete Lösung"
-// 2) Source: Main.cpp
-// 3) Include (ohne ProjectName)
-// 4) Source (ohne ProjectName & ohne Main.cpp)
+// 2) "# Erarbeitete Lösung"
+// 3) Source: Main.cpp
+// 4) Include (ohne ProjectName)
+// 5) Source (ohne ProjectName & ohne Main.cpp)
 // Kompatibel mit "Embed Code File" (```embed-cpp)
+const PROJECT_PROFILES = {
+  cpp_mfc: {
+    roots: {
+      source: ["Source"],
+      include: ["Include"],
+      resources: ["res"],
+      build: ["x64"]
+    },
+    codeExtensions: [".cpp", ".h", ".hpp", ".c", ".cc"],
+    resourceExtensions: [".rc", ".rc2"],
+    assetExtensions: [".ico", ".bmp"],
+    mainFiles: ["main.cpp"],
+    buildModes: ["Debug", "Release"],
+    configFiles: [
+      "CMakeLists.txt",
+      ".editorconfig"
+    ]
+  },
+  javakotlin: {
+    roots: {
+      source: ["src/main/java", "src/main/kotlin"],
+      test: ["src/test/java", "src/test/kotlin"],
+      resources: ["src/main/resources"]
+    },
+    codeExtensions: [".java", ".kt"],
+    mainFiles: ["Application.java", "Main.java"],
+    configFiles: [
+      "pom.xml",
+      "build.gradle",
+      "build.gradle.kts",
+      "application.yml"
+    ]
+  },
+
+  java: {
+    roots: {
+      source: ["src/main/java"],
+      test: ["src/test/java"],
+      resources: ["src/main/resources"]
+    },
+    codeExtensions: [".java"],
+    mainFiles: ["Application.java", "Main.java"],
+    configFiles: [
+      "pom.xml",
+      "application.yml",
+      "application.properties"
+    ]
+  },
+
+  node: {
+    roots: {
+      source: ["src"],
+      public: ["public"],
+      config: ["."]
+    },
+    codeExtensions: [
+      ".js", ".ts",
+      ".jsx", ".tsx",
+      ".css", ".scss"
+    ],
+    assetExtensions: [
+      ".svg", ".png", ".jpg", ".jpeg", ".webp"
+    ],
+    configFiles: [
+      "vite.config.js",
+      "vite.config.ts",
+      "package.json",
+      "dockerfile",
+      "docker-compose.yml",
+      ".env"
+    ],autoSections: [
+      "pages",
+      "components",
+      "api",
+      "security",
+      "services",
+      "hooks",
+      "layouts"
+    ],
+    mainFiles: ["main.jsx", "main.tsx", "index.js"]
+  }
+
+};
+
+const LANGUAGE_TO_PROFILE = {
+  cpp: "cpp_mfc",
+  cplusplus: "cpp_mfc",
+
+  java: "java",
+  kotlin: "javakotlin",
+  javakotlin: "javakotlin",
+
+  js: "node",
+  javascript: "node",
+  node: "node",
+  nodejs: "node",
+  jsx: "node",
+  tsx: "node",
+
+};
 
 const fs = require("fs");
 const path = require("path");
+// =========================
+// CODEBLOCK A: Engine/Helper
+// =========================
+const exists = (p) => { try { return fs.existsSync(p); } catch { return false; } };
+const listDir = (p) => fs.readdirSync(p, { withFileTypes: true });
+const toPosix = (p) => p.replace(/\\/g, "/");
 
-// -------------------- Konfiguration --------------------
-const ROOT_DIR_NAME = "Quellcode";        // Ordner mit Include/Source
-const INCLUDE_NAME  = "Include" ;          // Name des Include-Ordners (case-insensitiv)
-const SOURCE_NAME   = "Source";           // Name des Source-Ordners (case-insensitiv)
-const TEST_NAME     = "Test"; 
-const X64_Name      = "x64"; 
-const RESSOURCES_NAME = "res"; 
-const MAX_HEADING_LEVEL = 6;              // maximale Heading-Tiefe (### ... ######)
-// ------------------------------------------------------
-
-module.exports = async (params) => {
-  const app = params.app;
-  const editor = app.workspace.activeEditor?.editor;
-  if (!editor) return;
-
-  const activeFile = app.workspace.getActiveFile();
-  if (!activeFile) {
-    new Notice("Keine aktive Datei.");
-    return;
+// Root-Resolver (streng, ohne case-insensitive segments)
+const resolveRoot = (baseAbs, relPath) => {
+  if (!baseAbs || !relPath) return null;
+  const segments = relPath.split("/").filter(Boolean);
+  let current = baseAbs;
+  for (const seg of segments) {
+    if (!exists(current)) return null;
+    const hit = listDir(current).find(
+        d => d.isDirectory() && d.name.toLowerCase() === seg.toLowerCase()
+    );
+    if (!hit) return null;
+    current = toPosix(path.join(current, hit.name));
   }
-
-  const vaultRoot = app.vault.adapter.basePath.replace(/\\/g, "/");
-  const currentDir = path.dirname(`${vaultRoot}/${activeFile.path}`).replace(/\\/g, "/");
-
-  // Hilfsfunktionen
-  const exists = p => { try { return fs.existsSync(p); } catch { return false; } };
-  const listDir = p => fs.readdirSync(p, { withFileTypes: true });
-  const isCodeFile = n => /\.(cpp|cc|cxx|c|h|hpp|rc|rc2|pch|res|log|tlog)$/i.test(n);
-  const toPosix = p => p.replace(/\\/g, "/");
-
-  const findCaseInsensitive = (base, name) => {
-    if (!exists(base)) return null;
-    const hit = listDir(base).find(d => d.isDirectory() && d.name.toLowerCase() === name.toLowerCase());
-    return hit ? toPosix(path.join(base, hit.name)) : null;
-  };
-
-  // finde Quellcode-Root relativ zur aktiven Datei
-  const qcRoot = [ROOT_DIR_NAME, ROOT_DIR_NAME.toLowerCase(), ROOT_DIR_NAME.toUpperCase()]
-    .map(n => toPosix(path.join(currentDir, n)))
-    .find(exists);
-
-  if (!qcRoot) { new Notice(`Ordner '${ROOT_DIR_NAME}' nicht gefunden.`); return; }
-
-  const includeRoot = findCaseInsensitive(qcRoot, INCLUDE_NAME);
-  const sourceRoot  = findCaseInsensitive(qcRoot, SOURCE_NAME);
-  const testRoot    = findCaseInsensitive(qcRoot, TEST_NAME);	
-  const ressourceRoot = findCaseInsensitive(qcRoot, RESSOURCES_NAME); 
-  const x64Root = findCaseInsensitive(qcRoot, X64_Name); 
-
-  // Projektname = erster Unterordner in Include bzw. Source (symmetrisch ermitteln)
-  const detectProjectName = root => {
-    if (!root || !exists(root)) return null;
-    const first = listDir(root).find(d => d.isDirectory()); // erster Ordner
-    return first ? first.name : null;
-  };
-  const includeProject = detectProjectName(includeRoot);
-  const sourceProject  = detectProjectName(sourceRoot);
-  const testProject    = detectProjectName(testRoot); 
-  const ressourceProject= detectProjectName(ressourceRoot); 
-  const x64Project = detectProjectName(x64Root); 
-  
-  // Falls Source keinen hat, aber Include schon → gleichen Namen annehmen
-  const projectName = sourceProject || includeProject || testProject || ressourceProject || x64Project || null;
-
-  // rekursiv alle Code-Dateien sammeln
-  const collectFiles = (root) => {
-    if (!root || !exists(root)) return [];
-    const out = [];
-    const walk = (dir) => {
-      for (const de of listDir(dir)) {
-        const abs = toPosix(path.join(dir, de.name));
-        if (de.isDirectory()) walk(abs);
-        else if (isCodeFile(de.name)) out.push(abs);
-      }
-    };
-    walk(root);
-    // alphabetisch
-    out.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
-    return out;
-  };
-const collectAllFiles = (root) => {
+  return exists(current) ? current : null;
+};
+const collectResourceFiles = (root) => {
   if (!root || !exists(root)) return [];
   const out = [];
 
@@ -102,202 +143,754 @@ const collectAllFiles = (root) => {
   };
 
   walk(root);
+  return out;
+};
+
+// Collect: alle Dateien (für "Weitere Dateien")
+const collectAllFiles = (root) => {
+  if (!root || !exists(root)) return [];
+  const out = [];
+  const walk = (dir) => {
+    for (const de of listDir(dir)) {
+      const abs = toPosix(path.join(dir, de.name));
+      if (de.isDirectory()) walk(abs);
+      else out.push(abs);
+    }
+  };
+  walk(root);
   out.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
   return out;
 };
 
-  const srcFiles = collectFiles(sourceRoot);
+const groupFilesByTopFolder = (files, root) => {
+  const groups = {};
+  for (const abs of files) {
+    const rel = toPosix(path.relative(root, abs));
+    if (!rel || rel.startsWith("..")) continue;
+
+    const [top] = rel.split("/");
+    if (!top) continue;
+
+    groups[top] ??= [];
+    groups[top].push(abs);
+  }
+  return groups;
+};
+
+// Main-Datei-Section (profilabhängig)
+const buildMainSection = (files, profile, embedLang, toVaultRel) => {
+  const mainCandidates = PROJECT_PROFILES[profile].mainFiles?.map(f => f.toLowerCase()) ?? [];
+  if (mainCandidates.length === 0) return "";
+
+  const mainAbs = files.find(f => mainCandidates.includes(path.basename(f).toLowerCase()));
+  if (!mainAbs) return "";
+
+  const mainRelVault = toVaultRel(mainAbs);
+  const title = path.basename(mainAbs);
+
+  let s = `## ${title}\n`;
+  s += `[[${mainRelVault}|Main]]\n`;
+  s += `\`\`\`embed-${embedLang}\n`;
+  s += `PATH: "vault://${mainRelVault}"\n`;
+  s += `TITLE: "${title}"\n`;
+  s += "```\n\n";
+  return s;
+};
+
+// Tree-Builder (Ordnerstruktur -> Headings + Embeds)
+const buildTree = (
+    sectionTitle,
+    files,
+    root,
+    skipFirstFolderName,
+    excludeNamesSet,
+    embedLang,
+    toVaultRel,
+    maxHeadingLevel
+) => {
+  if (!files?.length) return "";
+  if (!root || !exists(root)) return "";
+
+  let s = `\n## ${sectionTitle}\n\n`;
+  const printedHeadings = new Set();
+
+  for (const abs of files) {
+    const relToRoot = toPosix(path.relative(root, abs));
+    if (!relToRoot || relToRoot.split("/")[0] === "..") continue;
+
+    const partsOrig = relToRoot.split("/").filter(p => p && p !== ".");
+    let parts = partsOrig.slice();
+
+    if (
+        skipFirstFolderName &&
+        parts.length > 1 &&
+        parts[0].toLowerCase() === skipFirstFolderName.toLowerCase()
+    ) {
+      parts = parts.slice(1);
+    }
+
+    if (parts.length === 0) continue;
+
+    const fileName = parts[parts.length - 1];
+    if (excludeNamesSet && excludeNamesSet.has(fileName.toLowerCase())) continue;
+
+    for (let i = 0; i < parts.length - 1; i++) {
+      const key = `${sectionTitle}:${parts.slice(0, i + 1).join("/")}`;
+      if (printedHeadings.has(key)) continue;
+      printedHeadings.add(key);
+
+      const level = Math.min(3 + i, maxHeadingLevel);
+      s += `${"#".repeat(level)} ${parts[i]}\n`;
+    }
+
+    const level = Math.min(3 + parts.length, maxHeadingLevel);
+    s += `${"#".repeat(level)} ${fileName}\n`;
+    s += `[[${toVaultRel(abs)}|${fileName}]]\n`;
+    s += `\`\`\`embed-${embedLang}\n`;
+    s += `PATH: "vault://${toVaultRel(abs)}"\n`;
+    s += `TITLE: "${fileName}"\n`;
+    s += "```\n\n";
+  }
+
+  return s;
+};
+
+// CPP: Exe-Links aus x64/Debug & x64/Release
+const buildExeLinksFromX64 = (x64Root, toVaultRel) => {
+  if (!x64Root || !exists(x64Root)) return "";
+
+  const entries = listDir(x64Root).filter(d => d.isDirectory());
+
+  const collectExeLinks = (subDirName) => {
+    const dir = entries.find(d => d.name.toLowerCase() === subDirName);
+    if (!dir) return [];
+    const absDir = toPosix(path.join(x64Root, dir.name));
+    return listDir(absDir)
+        .filter(f => f.isFile() && f.name.toLowerCase().endsWith(".exe"))
+        .map(f => toPosix(path.join(absDir, f.name)));
+  };
+
+  const debugExes = collectExeLinks("debug");
+  const releaseExes = collectExeLinks("release");
+
+  let s = "";
+
+  if (debugExes.length > 0) {
+    s += "## Debug\n\n";
+    for (const exe of debugExes) {
+      const fileName = path.basename(exe);
+      s += `[[${toVaultRel(exe)}|${fileName}]]\n`;
+    }
+    s += "\n";
+  }
+
+  if (releaseExes.length > 0) {
+    s += "## Release\n\n";
+    for (const exe of releaseExes) {
+      const fileName = path.basename(exe);
+      s += `[[${toVaultRel(exe)}|${fileName}]]\n`;
+    }
+    s += "\n";
+  }
+
+  return s;
+};
+
+const isAssetFile = (name) =>
+    Object.values(PROJECT_PROFILES)
+        .flatMap(p => p.assetExtensions ?? [])
+        .some(ext => name.toLowerCase().endsWith(ext));
+
+
+const findViteProjectRoot = (startDir, maxDepth = 5) => {
+  const walk = (dir, depth) => {
+    if (depth > maxDepth) return null;
+    if (!exists(dir)) return null;
+
+    const entries = listDir(dir);
+
+    // Treffer?
+    if (entries.some(e =>
+        e.isFile() &&
+        e.name.toLowerCase().startsWith("vite.config.")
+    )) {
+      return dir;
+    }
+
+    // Rekursiv in Unterordner
+    for (const e of entries) {
+      if (!e.isDirectory()) continue;
+      if (e.name.startsWith(".")) continue;
+      if (["node_modules", "dist", "build"].includes(e.name)) continue;
+
+      const hit = walk(
+          toPosix(path.join(dir, e.name)),
+          depth + 1
+      );
+      if (hit) return hit;
+    }
+
+    return null;
+  };
+
+  return walk(startDir, 0);
+};
+
+// -------------------- Konfiguration --------------------
+const ROOT_DIR_NAME = "Quellcode";        // Ordner mit Include/Source
+const MAX_HEADING_LEVEL = 6;              // maximale Heading-Tiefe (### ... ######)
+
+// ------------------------------------------------------
+
+module.exports = async (params) => {
+  const app = params.app;
+  const editor = app.workspace.activeEditor?.editor;
+  if (!editor) return;
+
+  const activeFile = app.workspace.getActiveFile();
+  if (!activeFile) {
+    new Notice("Keine aktive Datei.");
+    return;
+  }
+  const content = editor.getValue();
+
+
+  const langMatch = content.match(/Language:\s*"\[\[(.*?)\]\]"/);
+
+  const normalizeLanguage = (s) =>
+      s?.toLowerCase().replace(/[^a-z]/g, "");
+
+  const languageTagRaw = langMatch ? langMatch[1] : null;
+  const languageKey = normalizeLanguage(languageTagRaw);
+
+  const detectProfileByStructure = (qcRoot) => {
+    if (!qcRoot) return null;
+
+    // Node / Vite
+    if (
+        exists(path.join(qcRoot, "package.json")) ||
+        exists(path.join(qcRoot, "vite.config.js")) ||
+        exists(path.join(qcRoot, "vite.config.ts"))
+    ) {
+      return "node";
+    }
+
+    // Java / Maven
+    if (
+        exists(path.join(qcRoot, "pom.xml")) ||
+        exists(path.join(qcRoot, "src/main/java"))
+    ) {
+      return "java";
+    }
+
+    // Kotlin
+    if (exists(path.join(qcRoot, "src/main/kotlin"))) {
+      return "javakotlin";
+    }
+
+    // C++ (Visual Studio / klassisch)
+    if (
+        exists(path.join(qcRoot, "Source")) ||
+        exists(path.join(qcRoot, "Include"))
+    ) {
+      return "cpp_mfc";
+    }
+
+    return null;
+  };
+
+  const vaultRoot = app.vault.adapter.basePath.replace(/\\/g, "/");
+  const currentDir = path.dirname(`${vaultRoot}/${activeFile.path}`).replace(/\\/g, "/");
+  const toVaultRel = (abs) =>
+      toPosix(path.relative(vaultRoot, abs));
+
+  // Hilfsfunktionen
+  const collectConfigFiles = (root, configFileNames) => {
+    if (!root || !exists(root)) return [];
+    return listDir(root)
+        .filter(f =>
+            f.isFile() &&
+            configFileNames.includes(f.name.toLowerCase())
+        )
+        .map(f => toPosix(path.join(root, f.name)));
+  };
+
+
+  // finde Quellcode-Root relativ zur aktiven Datei
+  // 1) qcRoot bestimmen
+  const qcRoot = [ROOT_DIR_NAME, ROOT_DIR_NAME.toLowerCase(), ROOT_DIR_NAME.toUpperCase()]
+      .map(n => toPosix(path.join(currentDir, n)))
+      .find(exists);
+
+  if (!qcRoot) {
+    new Notice(`Ordner '${ROOT_DIR_NAME}' nicht gefunden.`);
+    return;
+  }
+
+// 2) Profil bestimmen
+  const profileFromLanguage =
+      LANGUAGE_TO_PROFILE[languageKey] ?? null;
+
+  const profileFromStructure =
+      detectProfileByStructure(qcRoot);
+
+  const ACTIVE_PROFILE =
+      profileFromLanguage
+      ?? profileFromStructure
+      ?? "cpp_mfc";
+
+  const profileConfigFiles =
+      PROJECT_PROFILES[ACTIVE_PROFILE].configFiles ?? [];
+
+  const configFiles = collectConfigFiles(
+      qcRoot,
+      profileConfigFiles.map(f => f.toLowerCase())
+  );
+
+  const CODE_EXTS = PROJECT_PROFILES[ACTIVE_PROFILE].codeExtensions;
+
+  const isCodeFile = name =>
+      CODE_EXTS.some(ext => name.toLowerCase().endsWith(ext));
+
+
+
+
+  const isFrontendCodeFile = (name) =>
+      ACTIVE_PROFILE !== "node" &&
+      PROJECT_PROFILES.node.codeExtensions
+          ?.some(ext => name.toLowerCase().endsWith(ext));
+
+// Non-Code-Dateien (nur Links, ohne Ordneranzeige)
+
+
+  const isContainerFile = (name) => {
+    const n = name.toLowerCase();
+    return (
+        n === "dockerfile" ||
+        n.startsWith("docker-compose") ||
+        n === "compose.yaml" ||
+        n.endsWith(".env") ||
+        n.includes("nginx")
+    );
+  };
+
+
+
+
+  const buildNonCodeLinksAtBottom = (files, toVaultRel) => {
+    if (!files.length) return "";
+
+    let s = "\n## Weitere Dateien\n\n";
+    for (const abs of files) {
+      s += `[[${toVaultRel(abs)}|${path.basename(abs)}]]\n`;
+    }
+    return s + "\n";
+  };
+
+
+  const collectFrontendFiles = (root) => {
+    if (!root || !exists(root)) return [];
+    const out = [];
+    const walk = (dir) => {
+      for (const de of listDir(dir)) {
+        const abs = toPosix(path.join(dir, de.name));
+        if (de.isDirectory()) walk(abs);
+        else if (isFrontendCodeFile(de.name)) out.push(abs);
+      }
+    };
+    walk(root);
+    return out;
+  };
+
+  const profileRoots = PROJECT_PROFILES[ACTIVE_PROFILE].roots;
+
+  const includeRoot = profileRoots.include?.map(r => resolveRoot(qcRoot, r)).find(Boolean);
+
+  let sourceRoots =
+      profileRoots.source
+          ?.map(r => resolveRoot(qcRoot, r))
+          .filter(Boolean) ?? [];
+
+  if (
+      ACTIVE_PROFILE === "node" &&
+      sourceRoots.length === 0
+  ) {
+    const viteRoot = findViteProjectRoot(qcRoot);
+    if (viteRoot) {
+      const viteSrc = resolveRoot(viteRoot, "src");
+      if (viteSrc) {
+        sourceRoots = [viteSrc];
+        new Notice("ℹ️ Vite-Projekt automatisch erkannt");
+      }
+    }
+  }
+
+  const testRoot = profileRoots.test?.map(r => resolveRoot(qcRoot, r)).find(Boolean);
+  const resourceRoot = profileRoots.resources?.map(r => resolveRoot(qcRoot, r)).find(Boolean);
+  const x64Root = profileRoots.build?.map(r => resolveRoot(qcRoot, r)).find(Boolean);
+
+
+  // Projektname = erster Unterordner in Include bzw. Source (symmetrisch ermitteln)
+  const detectProjectName = root => {
+    if (!root || !exists(root)) return null;
+    const first = listDir(root).find(d => d.isDirectory()); // erster Ordner
+    return first ? first.name : null;
+  };
+  const includeProject = detectProjectName(includeRoot);
+  const sourceProject = detectProjectName(sourceRoots[0]);
+  const testProject = detectProjectName(testRoot);
+  const resourceProject = detectProjectName(resourceRoot);
+  const x64Project = detectProjectName(x64Root);
+
+  const projectName = sourceProject || includeProject || testProject || resourceProject || x64Project || null;
+
+  const collectFiles = (root) => {
+    if (!root || !exists(root)) return [];
+    const out = [];
+    const walk = (dir) => {
+      for (const de of listDir(dir)) {
+        const abs = toPosix(path.join(dir, de.name));
+        if (de.isDirectory()) walk(abs);
+        else if (isCodeFile(de.name)) out.push(abs);
+      }
+    };
+    walk(root);
+    out.sort((a, b) => a.localeCompare(b, undefined, {sensitivity: "base"}));
+    return out;
+  };
+  const collectFilesFromRoots = (roots) =>
+      roots.flatMap(r => collectFiles(r));
+
+// --------------------
+// Frontend (Vite) zusätzlich erkennen
+// --------------------
+  let frontendSourceRoots = [];
+  if (ACTIVE_PROFILE === "java" || ACTIVE_PROFILE === "javakotlin") {
+    const viteRoot = findViteProjectRoot(qcRoot);
+    if (viteRoot) {
+      const viteSrc = resolveRoot(viteRoot, "src");
+      if (viteSrc) {
+        frontendSourceRoots = [viteSrc];
+        new Notice("ℹ️ Frontend (Vite) erkannt");
+      }
+    }
+  }
+
+  const frontendFiles = frontendSourceRoots.flatMap(r =>
+      collectFrontendFiles(r)
+  );
+
+  const srcFiles = collectFilesFromRoots(sourceRoots);
   const incFiles = collectFiles(includeRoot);
-  const testFiles = collectFiles(testRoot); 
-  const x64Files = collectFiles(x64Root); 
-  const resFiles = collectFiles(ressourceRoot); 
-  const qcFiles  = collectFiles(qcRoot); // Neu: alle Dateien unter Quellcode sammeln
-const qcAllFiles = collectAllFiles(qcRoot);
+  const qcAllFiles = collectAllFiles(qcRoot);
 
-  // Utility: relative Pfade vorbereiten
-  const toVaultRel = abs => toPosix(path.relative(vaultRoot, abs));
 
-  // Hilfsfunktion: prüfen ob child unter parent liegt
   const isUnder = (parent, child) => {
     if (!parent || !child) return false;
     try {
       const rel = toPosix(path.relative(parent, child));
-      if (!rel) return false; // gleiche Pfade: nicht relevant für Dateien
+      if (!rel) return false;
       return !rel.startsWith("..");
     } catch {
       return false;
     }
   };
 
-  // Dateien die direkt im Quellcode-Root liegen, aber NICHT in einem der speziellen Unterordner
-  const specialRoots = [includeRoot, sourceRoot, testRoot, ressourceRoot, x64Root].filter(Boolean);
-  const qcFilesFiltered = qcFiles.filter(f => !specialRoots.some(r => isUnder(r, f)));
+  const specialRoots = [
+    includeRoot,
+    ...sourceRoots,
+    testRoot,
+    resourceRoot,
+    x64Root,
+    ...frontendSourceRoots
+  ].filter(Boolean);
 
-  // ------------- 1) Header -------------
+  const qcFilesFiltered = qcAllFiles.filter(f =>
+      !specialRoots.some(r => isUnder(r, f))
+  );
+
   let out = "# Erarbeitete Lösung\n\n";
-out = buildExeLinksFromX64(x64Root) + out;
+  const maxHeadingLevel = MAX_HEADING_LEVEL;
 
-  // ------------- 2) Source → Main.cpp -------------
-  // Suche Main.cpp sowohl in Source als auch in Quellcode-Root (falls MFC dort die Datei ablegt)
-  const searchForMain = [...srcFiles, ...qcFilesFiltered];
-  const mainAbs = searchForMain.find(f => path.basename(f).toLowerCase() === "main.cpp");
-  if (mainAbs) {
-    const mainRelVault = toVaultRel(mainAbs);
-    out += "## Main.cpp\n";
-    out += `[[${mainRelVault}|Main]]\n`;
-    out += "```embed-cpp\n";
-    out += `PATH: "vault://${mainRelVault}"\n`;
-    out += `TITLE: "Main.cpp"\n`;
-    out += "```\n\n";
+// =========================
+// CODEBLOCK B: Compose Output
+// =========================
+
+  const EMBED_LANG_BY_PROFILE = {
+    cpp_mfc: "cpp",
+    java: "java",
+    node: "js"
+  };
+  const embedLang = EMBED_LANG_BY_PROFILE[ACTIVE_PROFILE] ?? "txt";
+
+// Für Java/Node sind includeRoot/x64Root evtl. null – das ist ok.
+  const exclude = new Set(PROJECT_PROFILES[ACTIVE_PROFILE].mainFiles?.map(f => f.toLowerCase()) ?? []);
+
+
+  const skipTopFolder = (ACTIVE_PROFILE === "cpp_mfc") ? projectName : null;
+
+// 1) Main
+  out += buildMainSection(
+      [...srcFiles, ...qcFilesFiltered],
+      ACTIVE_PROFILE,
+      embedLang,
+      toVaultRel
+  );
+  const publicRoot =
+      profileRoots.public?.map(r => resolveRoot(qcRoot, r)).find(Boolean);
+
+  const publicFiles = collectFrontendFiles(publicRoot);
+
+  if (publicFiles.length) {
+    out += buildTree(
+        "Public",
+        publicFiles,
+        publicRoot,
+        null,
+        null,
+        "txt",
+        toVaultRel,
+        maxHeadingLevel
+    );
   }
 
-  // Helper: Baum als Überschriften + Embeds ausgeben
-  // Jetzt: explizites root übergeben, robustere Prüfung auf "unterhalb von root"
-  const buildTree = (sectionTitle, files, root, skipFirstFolderName, excludeNamesSet) => {
-    if (!files.length) return "";
-    if (!root || !exists(root)) return "";
+// 2) Include
+  if (includeRoot)
+    out += buildTree(
+        "Include",
+        incFiles,
+        includeRoot,
+        skipTopFolder,
+        null,
+        embedLang,
+        toVaultRel,
+        maxHeadingLevel
+    );
 
-    let s = `\n## ${sectionTitle}\n\n`;
-    const printedHeadings = new Set();
 
-    for (const abs of files) {
-      // relativ zum übergebenen root
-      const relToRoot = toPosix(path.relative(root, abs));
+  const isResourceFile = (name) =>
+      (PROJECT_PROFILES[ACTIVE_PROFILE].resourceExtensions ?? [])
+          .some(ext => name.toLowerCase().endsWith(ext));
 
-      // Wenn Datei nicht im root liegt, überspringen
-      if (!relToRoot || relToRoot === "" || relToRoot.split("/")[0] === "..") continue;
 
-      // Teile bereinigen (keine leeren oder '.' Segmente)
-      const partsOrig = relToRoot.split("/").filter(p => p && p !== ".");
+  if (resourceRoot) {
+    const resFiles = collectResourceFiles(resourceRoot);
 
-      // optional ProjectName entfernen (nur wenn er wirklich erstes Segment ist)
-      let parts = partsOrig.slice();
-      if (skipFirstFolderName && parts.length > 1 && parts[0].toLowerCase() === skipFirstFolderName.toLowerCase()) {
-        parts = parts.slice(1);
-      }
-
-      if (parts.length === 0) continue;
-
-      const fileName = parts[parts.length - 1];
-      if (excludeNamesSet && excludeNamesSet.has(fileName.toLowerCase())) continue;
-
-      // Headings für alle Zwischenordner
-      // Start-Ebene ### (=3) → Ordner = 3.., Datei = last level +1
-      for (let i = 0; i < parts.length - 1; i++) {
-        const key = `${sectionTitle}:${parts.slice(0, i + 1).join("/")}`;
-        if (printedHeadings.has(key)) continue;
-        printedHeadings.add(key);
-
-        const level = Math.min(3 + i, MAX_HEADING_LEVEL);
-        s += `${"#".repeat(level)} ${parts[i]}\n`;
-      }
-
-      // Datei-Heading
-      const level = Math.min(3 + (parts.length - 1)+1, MAX_HEADING_LEVEL);
-      s += `${"#".repeat(level)} ${fileName}\n`;
-      s += `[[${toVaultRel(abs)}|${fileName}]]\n`;
-
-      s += "```embed-cpp\n";
-      s += `PATH: "vault://${toVaultRel(abs)}"\n`;
-      s += `TITLE: "${fileName}"\n`;
-      s += "```\n\n";
+    if (resFiles.length) {
+      out += buildTree(
+          "Resources",
+          resFiles.filter(f => isResourceFile(path.basename(f))),
+      resourceRoot,
+          null,
+          null,
+          "txt",
+          toVaultRel,
+          maxHeadingLevel
+      );
     }
-    return s;
-  };
-  
-  
-function buildExeLinksFromX64(x64Root) {
-  if (!x64Root || !exists(x64Root)) return "";
-
-  const result = [];
-  const entries = listDir(x64Root).filter(d => d.isDirectory());
-
-  const collectExeLinks = (subDirName) => {
-    const dir = entries.find(d => d.name.toLowerCase() === subDirName);
-    if (!dir) return [];
-
-    const absDir = toPosix(path.join(x64Root, dir.name));
-    const files = listDir(absDir)
-      .filter(f => f.isFile() && f.name.toLowerCase().endsWith(".exe"))
-      .map(f => toPosix(path.join(absDir, f.name)));
-
-    return files;
-  };
-
-  const debugExes   = collectExeLinks("debug");
-  const releaseExes = collectExeLinks("release");
-
-  let s = "";
-
-if (debugExes.length > 0) {
-  s += "## Debug\n\n";
-  for (const exe of debugExes) {
-    const fileName = path.basename(exe);
-    s += `[[${toVaultRel(exe)}|${fileName}]]\n`;
-  }
-  s += "\n";
-}
-
-
-  if (releaseExes.length > 0) {
-    s += "## Release\n\n";
-  for (const exe of releaseExes) {
-    const fileName = path.basename(exe);
-    s += `[[${toVaultRel(exe)}|${fileName}]]\n`;
-  }
-  s += "\n";
-}
-
-  return s;
-}
-
-
-
-function buildNonCodeLinksAtBottom(files) {
-  const nonCodeFiles = files.filter(f => {
-    const name = path.basename(f);
-    return !isCodeFile(name);
-  });
-
-  if (nonCodeFiles.length === 0) return "";
-
-  let s = "\n## Weitere Dateien\n\n";
-  for (const abs of nonCodeFiles) {
-    const fileName = path.basename(abs);
-    s += `[[${toVaultRel(abs)}|${fileName}]]\n`;
   }
 
-  return s + "\n";
-}
+
+// 2.5) Config (profilgetrieben, nicht nur node)
+  if (configFiles.length) {
+    out += buildTree(
+        "Config",
+        configFiles,
+        qcRoot,
+        null,
+        null,
+        "txt",
+        toVaultRel,
+        maxHeadingLevel
+    );
+  }
 
 
-  // Exclude-Set (Main wird bereits einzeln oben angezeigt)
-  const exclude = new Set(["main.cpp"]);
+// =========================
+// SOURCE rendering
+// =========================
+  const profile = PROJECT_PROFILES[ACTIVE_PROFILE];
+  const autoSections = profile.autoSections;
 
-  // ------------- A) Quellcode-Root (alles was direkt unter Quellcode liegt, ohne spezielle Unterordner) -------------
-  out += buildTree("Quellcode", qcFilesFiltered, qcRoot, null, exclude);
+  if (autoSections?.length) {
 
-  // ------------- 3) Include (ohne ProjectName) -------------
-  out += buildTree("Include", incFiles, includeRoot, projectName, null);
+    out += "\n## Source\n\n";
+    // Auto-sektionierte Source
+    for (const root of sourceRoots) {
+      const filesForRoot = srcFiles.filter(f => isUnder(root, f));
+      const grouped = groupFilesByTopFolder(filesForRoot, root);
+      out += `${path.basename(root)}\n\n`; // optional
 
-  // ------------- 4) Source (ohne ProjectName & ohne Main.cpp) -------------
-  out += buildTree("Source", srcFiles, sourceRoot, projectName, exclude);
 
-  // ------------- 5) Ressources  -------------
-  out += buildTree("Ressources", resFiles, ressourceRoot, projectName, null);
+      // 1) Definierte Sections
+      for (const section of autoSections) {
+        const files = grouped[section];
+        if (!files?.length) continue;
 
-  // -------------6) Debug / Release Files -------
-  out += buildTree("Release / Debug", x64Files, x64Root, projectName, null); 
+        out += buildTree(
+            section,
+            files,
+            root,
+            null,
+            null,
+            embedLang,
+            toVaultRel,
+            maxHeadingLevel
+        );
 
-  // -------------- 7) Tests -------------------
-  out += buildTree("Tests", testFiles, testRoot, projectName, null); 
+        delete grouped[section];
+      }
 
-  // Ausgabe in den aktiven Editor einfügen
-out += buildNonCodeLinksAtBottom(
-  qcAllFiles.filter(f => !specialRoots.some(r => isUnder(r, f)))
-);
- 
- editor.replaceSelection(out.trim());
+      // 2) Fallback: übrige Ordner
+      for (const [section, files] of Object.entries(grouped)) {
+        if (!files.length) continue;
 
-  new Notice("✅ Fertig: Main, Quellcode, Include, Source und Tests generiert.");
+        out += buildTree(
+            section,
+            files,
+            root,
+            null,
+            null,
+            embedLang,
+            toVaultRel,
+            maxHeadingLevel
+        );
+      }
+    }
+
+  } else {
+
+    // Klassische Source-Darstellung
+    for (const root of sourceRoots) {
+      const filesForRoot = srcFiles.filter(f => isUnder(root, f));
+
+      out += buildTree(
+          "Source",
+          filesForRoot,
+          root,
+          skipTopFolder,
+          exclude,
+          embedLang,
+          toVaultRel,
+          maxHeadingLevel
+      );
+    }
+  }
+// =========================
+// FRONTEND rendering (Node / Vite)
+// =========================
+  if (frontendSourceRoots.length && frontendFiles.length) {
+
+    out += "\n## Frontend\n\n";
+
+    const frontendProfile = PROJECT_PROFILES.node;
+    const autoSections = frontendProfile.autoSections;
+    const embedLang = "js";
+
+    for (const root of frontendSourceRoots) {
+      const filesForRoot = frontendFiles.filter(f => isUnder(root, f));
+      const grouped = groupFilesByTopFolder(filesForRoot, root);
+
+      // 1) Definierte Sections (pages, components, api, ...)
+      for (const section of autoSections) {
+        const files = grouped[section];
+        if (!files?.length) continue;
+
+        out += buildTree(
+            section,
+            files,
+            root,
+            null,
+            null,
+            embedLang,
+            toVaultRel,
+            maxHeadingLevel
+        );
+
+        delete grouped[section];
+      }
+
+      // 2) Rest
+      for (const [section, files] of Object.entries(grouped)) {
+        if (!files.length) continue;
+
+        out += buildTree(
+            section,
+            files,
+            root,
+            null,
+            null,
+            embedLang,
+            toVaultRel,
+            maxHeadingLevel
+        );
+      }
+    }
+  }
+
+
+  const containerFiles = qcAllFiles.filter(f =>
+      isContainerFile(path.basename(f))
+  );
+  if (containerFiles.length) {
+    out += "\n## Container\n\n";
+
+    for (const abs of containerFiles) {
+      const fileName = path.basename(abs);
+
+      out += `### ${fileName}\n`;
+      out += `[[${toVaultRel(abs)}|${fileName}]]\n`;
+      out += "```embed-txt\n";
+      out += `PATH: "vault://${toVaultRel(abs)}"\n`;
+      out += `TITLE: "${fileName}"\n`;
+      out += "```\n\n";
+    }
+  }
+
+
+// 4) Non-Code-Dateien nur im Quellcode-Root (ohne special roots)
+
+  if (ACTIVE_PROFILE === "cpp_mfc") {
+    out = buildExeLinksFromX64(x64Root, toVaultRel) + out;
+  }
+  const assetFiles = qcAllFiles.filter(f =>
+      isAssetFile(path.basename(f))
+  );
+
+
+
+  const otherFiles = qcAllFiles.filter(f =>
+      !assetFiles.includes(f) &&
+      !containerFiles.includes(f) &&
+      !specialRoots.some(r => isUnder(r, f))
+  );
+
+
+  out += buildNonCodeLinksAtBottom(otherFiles, toVaultRel);
+
+
+
+
+  if (assetFiles.length) {
+    out += "\n## Assets\n\n";
+    for (const abs of assetFiles) {
+      out += `![[${toVaultRel(abs)}|${path.basename(abs)}]]\n`;
+    }
+    out += "\n";
+  }
+  new Notice(
+      `Profile: ${ACTIVE_PROFILE} `
+      + `(lang=${profileFromLanguage ?? "–"}, `
+      + `structure=${profileFromStructure ?? "–"})`
+  );
+  const hasResources =
+      resourceRoot &&
+      collectResourceFiles(resourceRoot).length > 0;
+
+  if (!srcFiles.length && !incFiles.length && !hasResources) {
+    new Notice("️ Keine relevanten Dateien gefunden – Profil passt evtl. nicht.");
+  }
+
+  new Notice(" Fertig: Main, Quellcode, Include, Source und Tests generiert.");
+  editor.replaceSelection(out.trim());
 };
