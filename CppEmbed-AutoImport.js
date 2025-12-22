@@ -1,4 +1,4 @@
-// 🧩 QuickAdd Script: CppEmbed-Flow
+//  QuickAdd Script: CppEmbed-Flow
 // Ablauf:
 // 1) "# Erarbeitete Lösung"
 // 2) Source: Main.cpp
@@ -16,7 +16,7 @@ const SOURCE_NAME   = "Source";           // Name des Source-Ordners (case-insen
 const TEST_NAME     = "Test"; 
 const X64_Name      = "x64"; 
 const RESSOURCES_NAME = "res"; 
-const MAX_HEADING_LEVEL = 7;              // maximale Heading-Tiefe (### ... ######)
+const MAX_HEADING_LEVEL = 6;              // maximale Heading-Tiefe (### ... ######)
 // ------------------------------------------------------
 
 module.exports = async (params) => {
@@ -36,7 +36,7 @@ module.exports = async (params) => {
   // Hilfsfunktionen
   const exists = p => { try { return fs.existsSync(p); } catch { return false; } };
   const listDir = p => fs.readdirSync(p, { withFileTypes: true });
-  const isCodeFile = n => /\.(cpp|cc|cxx|c|h|hpp|rc|bmp|ico|rc2|exe|obj|pch|idb|pdb|res|log|tlog|lastbuildstate|sln|vcxproj)$/i.test(n);
+  const isCodeFile = n => /\.(cpp|cc|cxx|c|h|hpp|rc|rc2|pch|res|log|tlog)$/i.test(n);
   const toPosix = p => p.replace(/\\/g, "/");
 
   const findCaseInsensitive = (base, name) => {
@@ -89,6 +89,22 @@ module.exports = async (params) => {
     out.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
     return out;
   };
+const collectAllFiles = (root) => {
+  if (!root || !exists(root)) return [];
+  const out = [];
+
+  const walk = (dir) => {
+    for (const de of listDir(dir)) {
+      const abs = toPosix(path.join(dir, de.name));
+      if (de.isDirectory()) walk(abs);
+      else out.push(abs);
+    }
+  };
+
+  walk(root);
+  out.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+  return out;
+};
 
   const srcFiles = collectFiles(sourceRoot);
   const incFiles = collectFiles(includeRoot);
@@ -96,6 +112,7 @@ module.exports = async (params) => {
   const x64Files = collectFiles(x64Root); 
   const resFiles = collectFiles(ressourceRoot); 
   const qcFiles  = collectFiles(qcRoot); // Neu: alle Dateien unter Quellcode sammeln
+const qcAllFiles = collectAllFiles(qcRoot);
 
   // Utility: relative Pfade vorbereiten
   const toVaultRel = abs => toPosix(path.relative(vaultRoot, abs));
@@ -118,6 +135,7 @@ module.exports = async (params) => {
 
   // ------------- 1) Header -------------
   let out = "# Erarbeitete Lösung\n\n";
+out = buildExeLinksFromX64(x64Root) + out;
 
   // ------------- 2) Source → Main.cpp -------------
   // Suche Main.cpp sowohl in Source als auch in Quellcode-Root (falls MFC dort die Datei ablegt)
@@ -186,6 +204,72 @@ module.exports = async (params) => {
     }
     return s;
   };
+  
+  
+function buildExeLinksFromX64(x64Root) {
+  if (!x64Root || !exists(x64Root)) return "";
+
+  const result = [];
+  const entries = listDir(x64Root).filter(d => d.isDirectory());
+
+  const collectExeLinks = (subDirName) => {
+    const dir = entries.find(d => d.name.toLowerCase() === subDirName);
+    if (!dir) return [];
+
+    const absDir = toPosix(path.join(x64Root, dir.name));
+    const files = listDir(absDir)
+      .filter(f => f.isFile() && f.name.toLowerCase().endsWith(".exe"))
+      .map(f => toPosix(path.join(absDir, f.name)));
+
+    return files;
+  };
+
+  const debugExes   = collectExeLinks("debug");
+  const releaseExes = collectExeLinks("release");
+
+  let s = "";
+
+if (debugExes.length > 0) {
+  s += "## Debug\n\n";
+  for (const exe of debugExes) {
+    const fileName = path.basename(exe);
+    s += `[[${toVaultRel(exe)}|${fileName}]]\n`;
+  }
+  s += "\n";
+}
+
+
+  if (releaseExes.length > 0) {
+    s += "## Release\n\n";
+  for (const exe of releaseExes) {
+    const fileName = path.basename(exe);
+    s += `[[${toVaultRel(exe)}|${fileName}]]\n`;
+  }
+  s += "\n";
+}
+
+  return s;
+}
+
+
+
+function buildNonCodeLinksAtBottom(files) {
+  const nonCodeFiles = files.filter(f => {
+    const name = path.basename(f);
+    return !isCodeFile(name);
+  });
+
+  if (nonCodeFiles.length === 0) return "";
+
+  let s = "\n## Weitere Dateien\n\n";
+  for (const abs of nonCodeFiles) {
+    const fileName = path.basename(abs);
+    s += `[[${toVaultRel(abs)}|${fileName}]]\n`;
+  }
+
+  return s + "\n";
+}
+
 
   // Exclude-Set (Main wird bereits einzeln oben angezeigt)
   const exclude = new Set(["main.cpp"]);
@@ -209,7 +293,11 @@ module.exports = async (params) => {
   out += buildTree("Tests", testFiles, testRoot, projectName, null); 
 
   // Ausgabe in den aktiven Editor einfügen
-  editor.replaceSelection(out.trim());
+out += buildNonCodeLinksAtBottom(
+  qcAllFiles.filter(f => !specialRoots.some(r => isUnder(r, f)))
+);
+ 
+ editor.replaceSelection(out.trim());
 
-  new Notice("✅ Fertig: Main, Quellcode, Include, Source und Tests generiert. Collapse gestartet.");
+  new Notice("✅ Fertig: Main, Quellcode, Include, Source und Tests generiert.");
 };
