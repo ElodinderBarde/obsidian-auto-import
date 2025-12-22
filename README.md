@@ -1,5 +1,7 @@
 # CppEmbed-AutoImport (QuickAdd Script)
 
+Dieses Script wird nach und nach, nach bedarf weiter ausgebaut. Wer hier zufällig stolpert, bitt lest euch alles sorgfälltig durch ,da es einige speziefische Anforderungen hat. 
+
 Ein **QuickAdd-Macro-Script für Obsidian**, das automatisch eine vollständige, strukturierte **Code-Dokumentation** aus einem Projektordner erzeugt.
 
 Ursprünglich für **C++ / MFC** konzipiert, unterstützt das Script inzwischen **mehrere Projektprofile** (C++, Java, Kotlin, Node/Vite) und passt sein Verhalten **dynamisch** an Projektstruktur und Sprachkontext an.
