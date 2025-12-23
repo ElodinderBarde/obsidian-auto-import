@@ -1,99 +1,153 @@
 # CppEmbed-AutoImport (QuickAdd Script)
 
-Dieses Script wird nach und nach, nach bedarf weiter ausgebaut. Wer hier zufällig drüber stolpert, bitte lest euch alles sorgfälltig durch ,da es einige speziefische Anforderungen hat. 
+Dieses Script wird **iterativ und bedarfsorientiert** weiterentwickelt.
+Wer zufällig darüber stolpert: **bitte vollständig lesen**, da das Script einige **bewusst gesetzte strukturelle Voraussetzungen** hat und **nicht** als generischer „One-Click-Importer“ gedacht ist.
 
-Ein **QuickAdd-Macro-Script für Obsidian**, das automatisch eine vollständige, strukturierte **Code-Dokumentation** aus einem Projektordner erzeugt.
+**CppEmbed-AutoImport** ist ein **QuickAdd-Macro-Script für Obsidian**, das automatisch eine **vollständige, strukturierte Code-Dokumentation** aus einem Projekt erzeugt.
 
-Ursprünglich für **C++ / MFC** konzipiert, unterstützt das Script inzwischen **mehrere Projektprofile** (C++, Java, Kotlin, Node/Vite) und passt sein Verhalten **dynamisch** an Projektstruktur und Sprachkontext an.
+Ursprünglich für **C++ / MFC / Visual Studio** entwickelt, unterstützt das Script inzwischen **mehrere Sprachen und Projektarten** und passt sein Verhalten **profilbasiert** an Projektstruktur, Dateitypen und Kontext an.
 
-Das Script scannt einen definierten `Quellcode/`-Ordner und erzeugt Markdown mit:
+Das Script scannt einen **definiert eingegrenzten Projektordner (`Quellcode/`)** und erzeugt daraus strukturiertes Markdown mit:
 
-* Überschriftenhierarchie
-* internen Links
-* `embed-*`-Code-Einbettungen
-  ideal für Lern-, Analyse- und Abgabe-Notizen.
+* klarer Überschriftenhierarchie
+* internen Obsidian-Links
+* `embed-*`-Codeeinbettungen
+  (optimiert für Lern-, Analyse- und Abgabe-Notizen)
 
 ---
 
-##  Neue & erweiterte Features (aktuelle Version)
+## Grundprinzip (wichtig)
+
+Das Script arbeitet **nicht im gesamten Vault**, sondern **ausschließlich innerhalb eines expliziten Projektcontainers**.
+
+**Zwingende Voraussetzung:**
+
+```text
+<Projekt.md>
+└── Quellcode/
+    └── <echtes Projekt>
+```
+
+* `Quellcode/` ist **kein Projekt**, sondern ein **Container**
+* das eigentliche Projekt liegt **innerhalb**
+* das Script wird **aus der Markdown-Datei neben `Quellcode/` ausgeführt**
+* dadurch ist die Rekursion **gezielt begrenzt und stabil**
+
+Diese Architektur ist **bewusst gewählt** und kein Zufall.
+
+---
+
+## Neue & erweiterte Features (aktuelle Version)
 
 ### 🔁 Profilbasiertes Verhalten
 
-Das Script arbeitet **profilgesteuert**:
+Das Script arbeitet vollständig **profilgesteuert**.
+Ein Profil definiert:
 
-| Profil       | Erkennung                             |
+* relevante Ordner (`Source`, `Include`, `resources`, …)
+* Code-Dateitypen
+* Main-Dateien
+* Konfigurationsdateien
+* Asset- und Resource-Dateien
+
+### Unterstützte Profile
+
+| Profil       | Erkennung über Struktur / Dateien     |
 | ------------ | ------------------------------------- |
 | `cpp_mfc`    | `Source/`, `Include/`, `res/`, `x64/` |
 | `java`       | `pom.xml`, `src/main/java`            |
 | `javakotlin` | `src/main/kotlin`                     |
 | `node`       | `package.json`, `vite.config.*`       |
+| `csharp`     | `.csproj`, `Program.cs`               |
+| `python`     | `pyproject.toml`, `requirements.txt`  |
+| `lua`        | `fxmanifest.lua`, `.lua`              |
+| `php`        | `composer.json`, `index.php`          |
 
-Das aktive Profil wird ermittelt über:
+### Profilermittlung
+
+Das aktive Profil wird bestimmt über:
 
 1. **Language-Tag im Markdown** (falls vorhanden)
-2. **Projektstruktur**
-3. Fallback: `cpp_mfc`
+2. **Projektstruktur innerhalb von `Quellcode/`**
+3. **Fallback:** `cpp_mfc`
 
 ---
 
-###  Unterstützte Projektarten
+## Intelligente Projekt- & Root-Erkennung
 
-* **C++ / MFC / Visual Studio**
-* **Java (Maven)**
-* **Java + Kotlin**
-* **Node / Vite / React**
+* **Strikte Begrenzung auf `Quellcode/`**
+* **Zusätzliche Projekt-Root-Erkennung innerhalb von `Quellcode/`**
 
-Ein Projekt kann zusätzlich ein **Frontend (Vite)** enthalten, das automatisch erkannt und separat dokumentiert wird.
+  * z. B. bei:
 
----
+    ```text
+    Quellcode/
+    └── SpaceShooter/
+        ├── SpaceShooter.csproj
+        └── Program.cs
+    ```
+* Segmentweise, **case-insensitive Ordnerauflösung**
 
-###  Intelligente Root-Erkennung
-
-* Segmentweise, **case-insensitive** Ordnerauflösung
-  (`Source`, `source`, `SOURCE` → gültig)
-* Kein hartes `path.join` mehr
-* Stabil auf Windows, macOS, Linux
-
----
-
-###  Saubere Abschnittslogik
-
-Automatisch erzeugt:
-
-* `# Erarbeitete Lösung`
-* `## Main` (profilabhängig)
-* `## Include`
-* `## Source`
-* `## Resources`
-* `## Config`
-* `## Container`
-* `## Assets`
-* `## Debug / Release` (C++)
-
-Nicht relevante Dateien landen gesammelt unter:
-
-* `## Weitere Dateien`
+  * `Source`, `source`, `SOURCE` → gültig
+* **Kein hartes `path.join`**
+* stabil auf **Windows, macOS, Linux**
 
 ---
 
-###  Ressourcen & Assets (neu)
+## Saubere Abschnittslogik
 
-**C++ / MFC:**
+Automatisch erzeugte Hauptabschnitte (profilabhängig):
+
+```text
+# Erarbeitete Lösung
+## Main
+## Include
+## Source
+## Resources
+## Config
+## Container
+## Assets
+## Debug / Release (C++)
+```
+
+Nicht relevante Dateien werden **bewusst gesammelt** unter:
+
+```text
+## Weitere Dateien
+```
+
+Keine Vermischung von Code, Assets und Build-Artefakten.
+
+---
+
+## Ressourcen & Assets (neu & erweitert)
+
+### C++ / MFC
 
 * `.rc`, `.rc2` → **Resources**
 * `.ico`, `.bmp` → **Assets** (als Bildvorschau)
-* saubere Trennung von Code und Binärressourcen
+* saubere Trennung von:
 
-**Node / Frontend:**
+  * Code
+  * Ressourcen
+  * Binärdateien
+
+### Node / Frontend
 
 * Bilder (`.png`, `.svg`, `.jpg`, …) → **Assets**
-* Kein versehentliches Einbetten von Binärdateien als Code
+* **keine** Einbettung von Binärdateien als Code
 
 ---
 
-###  Config-Dateien (profilübergreifend)
+## Config-Dateien (profilübergreifend)
 
-Automatische Erkennung und Dokumentation von z. B.:
+Konfigurationsdateien werden **profilunabhängig erkannt** und gesammelt unter:
+
+```text
+## Config
+```
+
+Beispiele:
 
 * `CMakeLists.txt`
 * `.editorconfig`
@@ -101,12 +155,32 @@ Automatische Erkennung und Dokumentation von z. B.:
 * `application.yml`
 * `package.json`
 * `vite.config.ts`
-
-Diese erscheinen gesammelt unter **Config** – unabhängig vom Profil.
+* `.csproj`
+* `pyproject.toml`
 
 ---
 
-##  Erwartete Projektstruktur (C++ / MFC)
+## Container-Sektion (neu)
+
+Dateien mit Infrastruktur-Bezug werden **separat dokumentiert**:
+
+```text
+## Container
+```
+
+Erkannt werden u. a.:
+
+* `Dockerfile`
+* `docker-compose.yml`
+* `compose.yaml`
+* `nginx.conf`
+* `.env`
+
+Diese Dateien werden **embedded**, nicht nur verlinkt.
+
+---
+
+## Erwartete Projektstruktur (Beispiel: C++ / MFC)
 
 ```text
 Quellcode/
@@ -123,18 +197,19 @@ Quellcode/
 │   └── Release/
 ```
 
-> Der Projektname wird **automatisch erkannt**
-> (erstes Unterverzeichnis von `Source` / `Include`).
+Der Projektname wird **automatisch erkannt**
+(erstes Unterverzeichnis von `Source/` oder `Include/`).
 
 ---
 
-##  Verwendung
+## Verwendung
 
 ### Voraussetzungen
 
 * Obsidian (Desktop)
 * **QuickAdd Plugin**
 * **Embed Code File Plugin**
+  (`embed-cpp`, `embed-java`, `embed-js`, `embed-py`, …)
 
 ---
 
@@ -154,15 +229,15 @@ Quellcode/
 
 ### Ausführung
 
-* Markdown-Datei öffnen
-* Cursor an gewünschte Stelle setzen
-* QuickAdd-Macro ausführen
+1. Markdown-Datei neben `Quellcode/` öffnen
+2. Cursor an gewünschte Stelle setzen
+3. QuickAdd-Macro ausführen
 
-Das Script ersetzt die Selektion durch eine **vollständige Projektdokumentation**.
+👉 Die Selektion wird ersetzt durch eine **vollständige Projektdokumentation**.
 
 ---
 
-##  Zentrale Konfiguration (im Script)
+## Zentrale Konfiguration (im Script)
 
 ```js
 const ROOT_DIR_NAME = "Quellcode";
@@ -177,23 +252,26 @@ const PROJECT_PROFILES = { ... }
 
 ---
 
-##  Technische Details
+## Technische Details
 
 * Reines **QuickAdd-JavaScript**
-* Kein eigenes Obsidian-Plugin
+* **kein eigenes Obsidian-Plugin**
 * Zugriff über Node (`fs`, `path`)
 * POSIX-Pfadnormalisierung
-* Keine globalen Seiteneffekte
-* Deterministische Ausgabe
+* keine globalen Seiteneffekte
+* deterministische Ausgabe
+* bewusst keine UI-Konfiguration
+  → Versionierbarkeit & Reproduzierbarkeit
 
 ---
 
-##  Bekannte Einschränkungen
+## Bekannte Einschränkungen
 
 * Nur **Desktop**
-* Reales Dateisystem erforderlich
+* reales Dateisystem erforderlich
 * `embed-*` Plugins müssen installiert sein
-* Keine GUI-Konfiguration (bewusst → Versionierbarkeit)
+* kein GUI-Setup (bewusst)
+* Script erwartet **strukturierte Projekte**, kein Chaos-Import
 
 ---
 
@@ -202,5 +280,3 @@ const PROJECT_PROFILES = { ... }
 **Elodin**
 
 
-
-sauber daraus ableiten.
