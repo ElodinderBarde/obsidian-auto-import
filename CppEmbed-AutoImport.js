@@ -85,7 +85,62 @@ const PROJECT_PROFILES = {
       "layouts"
     ],
     mainFiles: ["main.jsx", "main.tsx", "index.js"]
+  },
+  csharp: {
+    roots: {
+      source: ["src", "."],
+      test: ["tests"],
+      resources: ["Resources", "Properties"]
+    },
+    codeExtensions: [".cs"],
+    mainFiles: ["Program.cs"],
+    configFiles: [
+      ".csproj",
+      "appsettings.json",
+      "appsettings.Development.json"
+    ]
+  },
+  python: {
+    roots: {
+      source: ["src", "."],
+      test: ["tests"]
+    },
+    codeExtensions: [".py"],
+    mainFiles: ["main.py", "__main__.py"],
+    configFiles: [
+      "requirements.txt",
+      "pyproject.toml",
+      "setup.py"
+    ]
+  },
+  lua: {
+    roots: {
+      source: ["src", "."]
+    },
+    codeExtensions: [".lua"],
+    mainFiles: ["main.lua"],
+    configFiles: [
+      "fxmanifest.lua",
+      "__resource.lua"
+    ]
+  },
+  php: {
+    roots: {
+      source: ["src", "app"],
+      public: ["public"],
+      resources: ["resources"]
+    },
+    codeExtensions: [".php"],
+    mainFiles: ["index.php"],
+    configFiles: [
+      "composer.json",
+      ".env"
+    ]
   }
+
+
+
+
 
 };
 
@@ -103,7 +158,15 @@ const LANGUAGE_TO_PROFILE = {
   nodejs: "node",
   jsx: "node",
   tsx: "node",
+  csharp: "csharp",
+  cs: "csharp",
 
+  python: "python",
+  py: "python",
+
+  lua: "lua",
+
+  php: "php"
 };
 
 const fs = require("fs");
@@ -366,7 +429,40 @@ module.exports = async (params) => {
   const detectProfileByStructure = (qcRoot) => {
     if (!qcRoot) return null;
 
-    // Node / Vite
+    // ---------- C# ----------
+    if (
+        exists(path.join(qcRoot, "Program.cs")) ||
+        listDir(qcRoot).some(f =>
+            f.isFile() && f.name.toLowerCase().endsWith(".csproj")
+        )    ) {
+      return "csharp";
+    }
+
+    // ---------- Lua ----------
+    if (
+        exists(path.join(qcRoot, "fxmanifest.lua")) ||
+        listDir(qcRoot).some(f => f.name.endsWith(".lua"))
+    ) {
+      return "lua";
+    }
+
+    // ---------- PHP ----------
+    if (
+        exists(path.join(qcRoot, "composer.json")) ||
+        exists(path.join(qcRoot, "index.php"))
+    ) {
+      return "php";
+    }
+
+    // ---------- Python ----------
+    if (
+        exists(path.join(qcRoot, "pyproject.toml")) ||
+        exists(path.join(qcRoot, "requirements.txt"))
+    ) {
+      return "python";
+    }
+
+    // ---------- Node ----------
     if (
         exists(path.join(qcRoot, "package.json")) ||
         exists(path.join(qcRoot, "vite.config.js")) ||
@@ -375,7 +471,7 @@ module.exports = async (params) => {
       return "node";
     }
 
-    // Java / Maven
+    // ---------- Java ----------
     if (
         exists(path.join(qcRoot, "pom.xml")) ||
         exists(path.join(qcRoot, "src/main/java"))
@@ -383,12 +479,12 @@ module.exports = async (params) => {
       return "java";
     }
 
-    // Kotlin
+    // ---------- Kotlin ----------
     if (exists(path.join(qcRoot, "src/main/kotlin"))) {
       return "javakotlin";
     }
 
-    // C++ (Visual Studio / klassisch)
+    // ---------- C++ ----------
     if (
         exists(path.join(qcRoot, "Source")) ||
         exists(path.join(qcRoot, "Include"))
@@ -398,6 +494,7 @@ module.exports = async (params) => {
 
     return null;
   };
+
 
   const vaultRoot = app.vault.adapter.basePath.replace(/\\/g, "/");
   const currentDir = path.dirname(`${vaultRoot}/${activeFile.path}`).replace(/\\/g, "/");
@@ -415,6 +512,34 @@ module.exports = async (params) => {
         .map(f => toPosix(path.join(root, f.name)));
   };
 
+  const detectProjectRoot = (qcRoot) => {
+    if (!qcRoot || !exists(qcRoot)) return null;
+
+    // 1) Direkt prüfen (flacher Fall)
+    const directHit = listDir(qcRoot).some(f =>
+            f.isFile() && (
+                f.name.endsWith(".csproj") ||
+                f.name === "Program.cs"
+            )
+    );
+    if (directHit) return qcRoot;
+
+    // 2) Genau eine Ebene tiefer
+    for (const d of listDir(qcRoot)) {
+      if (!d.isDirectory()) continue;
+
+      const sub = path.join(qcRoot, d.name);
+      const hit = listDir(sub).some(f =>
+              f.isFile() && (
+                  f.name.endsWith(".csproj") ||
+                  f.name === "Program.cs"
+              )
+      );
+      if (hit) return sub;
+    }
+
+    return qcRoot; // Fallback
+  };
 
   // finde Quellcode-Root relativ zur aktiven Datei
   // 1) qcRoot bestimmen
@@ -431,8 +556,18 @@ module.exports = async (params) => {
   const profileFromLanguage =
       LANGUAGE_TO_PROFILE[languageKey] ?? null;
 
+  const projectRoot =
+      detectProjectRoot(qcRoot);
+
   const profileFromStructure =
-      detectProfileByStructure(qcRoot);
+      detectProfileByStructure(projectRoot);
+
+  new Notice(
+      `qcRoot=${qcRoot}\nprojectRoot=${projectRoot}`
+  );
+
+
+
 
   const ACTIVE_PROFILE =
       profileFromLanguage
