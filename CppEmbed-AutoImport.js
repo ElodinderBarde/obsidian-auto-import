@@ -5,6 +5,11 @@
 // 4) Include (ohne ProjectName)
 // 5) Source (ohne ProjectName & ohne Main.cpp)
 // Kompatibel mit "Embed Code File" (```embed-cpp)
+
+
+
+
+
 const PROJECT_PROFILES = {
   cpp_mfc: {
     roots: {
@@ -552,6 +557,10 @@ module.exports = async (params) => {
     return;
   }
 
+
+
+
+
 // 2) Profil bestimmen
   const profileFromLanguage =
       LANGUAGE_TO_PROFILE[languageKey] ?? null;
@@ -677,7 +686,29 @@ module.exports = async (params) => {
   const resourceProject = detectProjectName(resourceRoot);
   const x64Project = detectProjectName(x64Root);
 
+
   const projectName = sourceProject || includeProject || testProject || resourceProject || x64Project || null;
+
+
+  const detectAllProjects = (qcRoot) => {
+    if (!qcRoot || !exists(qcRoot)) return [];
+
+    return listDir(qcRoot)
+        .filter(d => d.isDirectory())
+        .map(d => ({
+          name: d.name,
+          root: toPosix(path.join(qcRoot, d.name))
+        }))
+        .filter(p =>
+            exists(path.join(p.root, "Source")) ||
+            exists(path.join(p.root, "Include"))
+        );
+  };
+
+
+  const detectedProjects = detectAllProjects(qcRoot);
+
+  const IS_MULTI_PROJECT = detectedProjects.length > 1;
 
   const collectFiles = (root) => {
     if (!root || !exists(root)) return [];
@@ -746,6 +777,7 @@ module.exports = async (params) => {
 
   let out = "# Erarbeitete Lösung\n\n";
   const maxHeadingLevel = MAX_HEADING_LEVEL;
+
 
 // =========================
 // CODEBLOCK B: Compose Output
@@ -840,6 +872,149 @@ module.exports = async (params) => {
     );
   }
 
+
+// =========================
+// MULTI PROJECT RENDER
+// =========================
+
+  if (IS_MULTI_PROJECT) {
+    for (const project of detectedProjects) {
+
+      // --- Projekt-Roots ---
+      const projectIncludeRoot  = resolveRoot(project.root, "Include");
+      const projectSourceRoot   = resolveRoot(project.root, "Source");
+      const projectResourceRoot = resolveRoot(project.root, "res");
+      const projectX64Root      = resolveRoot(project.root, "x64");
+
+      // --- Alle Dateien des Projekts ---
+      const projectAllFiles = collectAllFiles(project.root);
+
+      // --- Tracking: was wird irgendwo gerendert? ---
+      const renderedFiles = new Set();
+
+      out += `\n# Projektteil: ${project.name}\n`;
+
+      // =====================
+      // Include
+      // =====================
+      if (projectIncludeRoot) {
+        const incFiles = collectFiles(projectIncludeRoot);
+        incFiles.forEach(f => renderedFiles.add(f));
+
+        out += buildTree(
+            "Include",
+            incFiles,
+            projectIncludeRoot,
+            null,
+            null,
+            embedLang,
+            toVaultRel,
+            maxHeadingLevel
+        );
+      }
+
+      // =====================
+      // Source
+      // =====================
+      if (projectSourceRoot) {
+        const srcFiles = collectFiles(projectSourceRoot);
+        srcFiles.forEach(f => renderedFiles.add(f));
+
+        out += buildTree(
+            "Source",
+            srcFiles,
+            projectSourceRoot,
+            null,
+            null,
+            embedLang,
+            toVaultRel,
+            maxHeadingLevel
+        );
+      }
+
+      // =====================
+      // Resources (alles!)
+      // =====================
+      if (projectResourceRoot) {
+        const resFiles = collectAllFiles(projectResourceRoot);
+        resFiles.forEach(f => renderedFiles.add(f));
+
+        out += buildTree(
+            "Resources",
+            resFiles,
+            projectResourceRoot,
+            null,
+            null,
+            "txt",
+            toVaultRel,
+            maxHeadingLevel
+        );
+      }
+
+      // =====================
+      // Build / x64 (alles!)
+      // =====================
+      if (projectX64Root) {
+        const buildFiles = collectAllFiles(projectX64Root);
+        buildFiles.forEach(f => renderedFiles.add(f));
+
+        if (ACTIVE_PROFILE === "cpp_mfc") {
+          out += buildExeLinksFromX64(projectX64Root, toVaultRel);
+        }
+      }
+
+      // =====================
+      // Assets (profilunabhängig)
+      // =====================
+      const assetFiles = projectAllFiles.filter(f =>
+          isAssetFile(path.basename(f))
+      );
+      assetFiles.forEach(f => renderedFiles.add(f));
+
+      if (assetFiles.length) {
+        out += "\n## Assets\n\n";
+        for (const abs of assetFiles) {
+          out += `![[${toVaultRel(abs)}|${path.basename(abs)}]]\n`;
+        }
+        out += "\n";
+      }
+
+      // =====================
+      // Container-Dateien
+      // =====================
+      const containerFiles = projectAllFiles.filter(f =>
+          isContainerFile(path.basename(f))
+      );
+      containerFiles.forEach(f => renderedFiles.add(f));
+
+      if (containerFiles.length) {
+        out += "\n## Container\n\n";
+        for (const abs of containerFiles) {
+          out += `[[${toVaultRel(abs)}|${path.basename(abs)}]]\n`;
+        }
+        out += "\n";
+      }
+
+      // =====================
+      // 🔥 Weitere Dateien = REST
+      // =====================
+      const remainingFiles = projectAllFiles.filter(f => !renderedFiles.has(f));
+
+      if (remainingFiles.length) {
+        out += "\n## Weitere Dateien\n\n";
+        for (const abs of remainingFiles) {
+          out += `[[${toVaultRel(abs)}|${path.basename(abs)}]]\n`;
+        }
+        out += "\n";
+      }
+
+      out += "\n---\n";
+    }
+
+    editor.replaceSelection(out.trim());
+    new Notice("Multi-Project-Import abgeschlossen.");
+    return;
+  }
 
 // =========================
 // SOURCE rendering
@@ -1028,4 +1203,5 @@ module.exports = async (params) => {
 
   new Notice(" Fertig: Main, Quellcode, Include, Source und Tests generiert.");
   editor.replaceSelection(out.trim());
+
 };
